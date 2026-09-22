@@ -1,0 +1,367 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================================
+   Aloha Broadband brand tokens — OFFICIAL VALUES ONLY.
+   Every hex below was scraped from the live carrier stylesheet:
+   https://alohabroadband.com/wp-content/themes/Aloha/style.css
+   No derived or interpolated shades. To vary a tone, use an opacity modifier
+   on one of these rather than introducing a new hex.
+   =========================================================================== */
+:root {
+  --ab-navy-800: #091c30;
+  --ab-navy-700: #012145;
+  --ab-navy-500: #123e7a;
+  --ab-navy-400: #5187c2;
+  --ab-azure-500: #0066cc;
+  --ab-azure-200: #bfd9f0;
+  --ab-azure-150: #c2d8eb;
+  --ab-azure-100: #dceefd;
+  --ab-azure-75: #d9e8f7;
+  --ab-azure-50: #f2f7fc;
+  --ab-sunset-500: #ec6c27;
+  --ab-sunset-400: #ff4b33;
+  --ab-slate-500: #8797a7;
+  --ab-slate-400: #8fa5b7;
+  --ab-ink: #313131;
+
+  --shell-gutter: 1.25rem;
+  --header-h: 4.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-azure-150/60;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  /* Lenis drives scrolling once mounted; disable native smooth to avoid fighting it. */
+  html.lenis,
+  html.lenis body {
+    height: auto;
+  }
+  html.lenis {
+    scroll-behavior: auto;
+  }
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+  .lenis.lenis-stopped {
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-white font-sans text-ink antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+    text-rendering: optimizeLegibility;
+    /* `clip`, not `hidden`: `hidden` turns <body> into a scroll container,
+       which breaks `position: sticky` on the header. */
+    overflow-x: clip;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: var(--ab-sunset-400);
+    color: #fff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ab-sunset-400);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* Anchor targets clear the sticky header. */
+  section[id] {
+    scroll-margin-top: calc(var(--header-h) + 2.5rem);
+  }
+}
+
+@layer components {
+  .shell {
+    @apply mx-auto w-full max-w-shell px-5 sm:px-8;
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-[0.75rem] font-semibold uppercase tracking-[0.2em] lg:text-[0.7rem];
+  }
+
+  .hairline {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-azure-200 to-transparent;
+  }
+}
+
+/* =============================================================================
+   SCROLL ANIMATION PRIMITIVES
+   -----------------------------------------------------------------------------
+   Deliberately NOT inside `@layer components`. Tailwind sorts and may drop
+   custom rules declared in that layer, which previously reordered the paired
+   hidden/visible rules below and left every revealed element stuck at
+   opacity: 0. Plain top-level CSS keeps source order and specificity intact.
+   Do not move these back into a @layer.
+
+   These are PROGRESSIVE ENHANCEMENT: every hidden state is scoped to `html.js`,
+   a class rendered server-side in app/layout.tsx and cancelled by the
+   <noscript> block there when scripting is unavailable. Never author a hidden
+   state outside `html.js` — content must never depend on an animation firing.
+   ============================================================================= */
+
+/* Applied when an element is revealed while the tab is hidden. Browsers freeze
+   transitions in background tabs, so the element must snap to its final state
+   rather than wait for an animation that will never advance. */
+.anim-skip,
+.anim-skip * {
+  transition: none !important;
+}
+
+/* ---- Scroll reveal ------------------------------------------------------ */
+.reveal {
+  transition:
+    opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+html.js .reveal {
+  opacity: 0;
+  transform: translate3d(0, 28px, 0);
+  will-change: opacity, transform;
+}
+html.js .reveal.is-in {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* ---- Per-word headline reveal ------------------------------------------ */
+.word-reveal {
+  display: inline-block;
+  vertical-align: bottom;
+}
+.word-reveal > span {
+  display: inline-block;
+}
+html.js .word-reveal {
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+}
+html.js .word-reveal > span {
+  transform: translate3d(0, 110%, 0) rotate(3deg);
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--word-delay, 0ms);
+  will-change: transform;
+}
+html.js .is-in .word-reveal > span {
+  transform: none;
+  will-change: auto;
+}
+
+/* ---- Clip-path wipe between major sections -----------------------------
+   `.wipe-root` is the observed element and is never clipped. `.wipe` is its
+   child and carries the clip. See the note in components/ui/primitives.tsx:
+   attaching the observer to the clipped node deadlocks it permanently. */
+.wipe {
+  transition: clip-path 1.15s cubic-bezier(0.65, 0, 0.35, 1);
+}
+html.js .wipe {
+  clip-path: inset(0 0 100% 0);
+  will-change: clip-path;
+}
+html.js .wipe-root.is-in .wipe {
+  clip-path: inset(0 0 0 0);
+  will-change: auto;
+}
+html.js .wipe-root.anim-skip .wipe {
+  transition: none !important;
+}
+
+/* A section's wipe opening also releases everything inside it.
+   Nested reveals cannot observe their own way in while an ancestor clips them
+   to zero area, so scrolling quickly past a section used to leave its contents
+   permanently invisible. Tying them to the section's own reveal keeps the
+   staggered choreography (each child still honours --reveal-delay) while
+   removing the nested-observer dependency entirely. */
+html.js .wipe-root.is-in .reveal {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+html.js .wipe-root.is-in .word-reveal > span {
+  transform: none;
+  will-change: auto;
+}
+
+/* ---- Responsive background photography -----------------------------------
+   A component hands both sizes in as custom properties:
+     style={{ '--bg': `url(${src})`, '--bg-sm': `url(${srcSm})` }}
+   and CSS picks the right one. A phone never downloads the desktop frame.
+   Falls back to --bg if --bg-sm is absent. */
+.bg-responsive {
+  background-image: var(--bg);
+}
+@media (max-width: 640px) {
+  .bg-responsive {
+    background-image: var(--bg-sm, var(--bg));
+  }
+}
+
+/* ---- Marquee ------------------------------------------------------------ */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+/* ---- Spotlight -----------------------------------------------------------
+   A card opts in with data-spotlight + a child carrying .spotlight-layer.
+   The Spotlight wrapper writes --mx/--my; the layer paints from them. Falls
+   back to invisible when the variables are absent (touch, reduced motion). */
+.spotlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  background: radial-gradient(
+    var(--spot-size, 380px) circle at var(--mx, -999px) var(--my, -999px),
+    var(--spot-color, rgba(255, 255, 255, 0.11)),
+    transparent 62%
+  );
+}
+[data-spotlight]:hover .spotlight-layer {
+  opacity: 1;
+}
+
+/* ---- Animated gradient border --------------------------------------------
+   A conic gradient rotating behind the card, masked to a 1px ring by the
+   inner surface sitting on top of it. Used sparingly — the featured plan and
+   the closing CTA only. */
+.beam-border {
+  position: relative;
+  isolation: isolate;
+}
+.beam-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    #ff4b33 40deg,
+    #ec6c27 80deg,
+    transparent 150deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: beam 6s linear infinite;
+  z-index: -1;
+}
+
+/* ---- 3D tilt ------------------------------------------------------------ */
+.tilt-root {
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.tilt-root.is-tilting {
+  transition: transform 0.12s linear;
+}
+.tilt-layer {
+  transform: translateZ(38px);
+}
+
+/* ===========================================================================
+   MOBILE PERFORMANCE
+   ---------------------------------------------------------------------------
+   The decorative layer is built for a desktop GPU: two dozen 64px-blur
+   gradient fields, stacked backdrop-filters, a full-bleed Ken Burns pan and a
+   fixed mix-blend grain plane. Each is cheap alone and expensive together on a
+   mid-range phone, where they show up as scroll jank and battery drain.
+
+   Nothing is removed — the design still reads the same. The cost drivers are
+   just dialled down: blur radius (the dominant cost, and barely perceptible at
+   this scale), the slow pan (invisible on a small viewport anyway), and the
+   grain's blend mode.
+   =========================================================================== */
+/* Desktop radius. Consumed by the mesh keyframes, which own the `filter`
+   property outright — see the note in tailwind.config.ts. */
+.aurora-field {
+  --aurora-blur: 64px;
+}
+
+@media (max-width: 767px) {
+  .aurora-field {
+    --aurora-blur: 34px;
+  }
+  /* A 34s pan across a 390px viewport is not perceptible; it only costs a
+     continuously-repainting full-bleed layer. */
+  .animate-kenburns {
+    animation: none;
+    transform: scale(1.04);
+  }
+  /* mix-blend-mode on a fixed full-screen layer forces the compositor to
+     re-blend the whole page on every scroll frame. */
+  .grain-layer {
+    mix-blend-mode: normal;
+    opacity: 0.09;
+  }
+}
+
+/* ===========================================================================
+   Reduced motion: keep everything legible, drop the movement.
+   =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .reveal,
+  .wipe,
+  .wipe-root {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+  .word-reveal > span {
+    transform: none !important;
+  }
+  /* The rotating border ring would sit frozen mid-sweep; hide it instead. */
+  .beam-border::before {
+    display: none;
+  }
+  .spotlight-layer {
+    display: none;
+  }
+}

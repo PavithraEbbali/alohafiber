@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.pem
+npm-debug.log*
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Original generator output (PNG, ~28MB). Not needed to build — the optimised
+# JPEGs the site actually serves live in public/images/ and ARE committed.
+# Keeping these out stops 28MB entering git history permanently and being
+# re-cloned on every Vercel build. They remain on disk locally.
+design/source-images/
+
+# Local editor/tooling config
+.claude/

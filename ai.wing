@@ -1,0 +1,1178 @@
+================================================================================
+ ai.wing — CHANGELOG & BUILD LOG
+ Aloha Fiber — Independent Authorized Retailer of Aloha Broadband
+================================================================================
+
+Format: newest entry at the top. Every structural change, feature addition and
+component creation is logged here for version tracking.
+
+
+--------------------------------------------------------------------------------
+ [v3.0.0] — STATIC HTML EXPORT
+--------------------------------------------------------------------------------
+
+  The whole site now builds to plain HTML in ./out, deployable to any static
+  host with no Node process. `npm run build` produces it.
+
+## HOW, AND WHY NOTHING WAS LOST
+
+  next.config.mjs -> output: 'export', trailingSlash: true.
+
+  Nothing had to be rewritten or reimplemented. Every effect on this site is
+  either CSS or client-side JavaScript, and a static export ships both
+  unchanged — the same stylesheet and the same React bundle, just without a
+  server rendering pages on request. The alternative (hand-porting eight
+  interactive components to vanilla JS) would have guaranteed drift; this
+  guarantees parity.
+
+  Pre-flight confirmed the site had no server dependencies at all:
+    0 API routes · 0 server actions · 0 next/image · 0 headers/redirects/
+    rewrites · the one dynamic route already had generateStaticParams with
+    dynamicParams = false.
+
+  `trailingSlash: true` so pages emit as `privacy/index.html` rather than
+  `privacy.html` — works from a filesystem root on hosts that do not rewrite
+  extensionless URLs.
+
+## OUTPUT
+
+  10 real pages + 404, 3.1 MB total:
+    index.html, privacy/, disclaimer/, cookies/, tcpa/, trademarks/,
+    marketing-policy/, service-fulfillment/, pci-dss/, 404
+    + _next/ (1.0 MB hashed CSS/JS) + images/ (588 KB)
+
+## VERIFIED AGAINST THE EXPORT, NOT THE DEV SERVER
+
+  Served ./out over a plain static file server and tested there:
+
+    React hydrated ......... yes (event handlers attached, not inert markup)
+    Lenis smooth scroll .... mounted
+    html.js gate ........... present (progressive-enhancement gate intact)
+    Running animations ..... 31
+    Grain overlay .......... present
+    Mesh gradient fields ... 24
+    Ken Burns .............. 1     Marquee ............ 1
+    Beam borders ........... 2     Spotlight cards .... 6
+    Tilt cards ............. 3     Reveals ............ 38
+    Wipes .................. 4     Photographs ........ 4
+    ZIP checker ............ hit / miss / invalid all correct
+    FAQ accordion .......... React state + class toggle correct
+    All 8 legal pages ...... 200, full header/footer/aurora/grain
+    Dev artifacts .......... none (no HMR client, no react-refresh)
+
+## CHANGES MADE FOR THE EXPORT
+
+  - package.json: `next start` cannot serve a static export, it expects a
+    server build. `npm start` now serves ./out instead (via npx serve, so no
+    dependency was added). `npm run preview` does the same.
+
+  - app/layout.tsx: metadataBase now reads NEXT_PUBLIC_SITE_URL, defaulting to
+    the https://example.com placeholder. The domain is baked into every
+    exported HTML file as the og:image base and CANNOT be changed after export
+    without rebuilding, so it has to be set at build time:
+
+        NEXT_PUBLIC_SITE_URL=https://yourdomain.com npm run build
+
+    Verified both paths: with the variable set the real domain appears in the
+    HTML; without it the placeholder does.
+
+  - public/images/README.md moved to design/IMAGE-ASSETS.md. Anything under
+    public/ ships, and build documentation should not be published.
+
+
+--------------------------------------------------------------------------------
+ [v2.4.1] — HERO HEADLINE: HALO REMOVED
+--------------------------------------------------------------------------------
+
+  Reported as "not seen properly". At magnification the cause was obvious: a
+  grey halo around every glyph.
+
+  Source was the text-shadow I had been leaning on since the overlay was
+  removed — `0 2px 16px rgba(0,0,0,.45)`. At a 16px blur radius a shadow does
+  not crisp type, it paints a diffuse cloud behind it. Against the pale
+  overcast sky in the photograph that cloud reads as dirt on the letterforms.
+
+  The underlying mistake was using a shadow to do a scrim's job. A shadow
+  scales with the glyph outline, so making it strong enough to carry contrast
+  across a large headline necessarily makes it wide enough to be seen.
+
+  Fix:
+    - Every text-shadow removed from the hero headline and paragraph.
+    - The neutral left scrim strengthened and extended instead:
+        was  .66 -> .5 -> .24 -> clear by 62%
+        now  .76 -> .68 -> .5 -> .24 -> .06 -> clear by 92%
+      Still pure black, still adds no colour cast, and the photograph is still
+      fully visible on the right where the copy does not sit.
+
+  Type now renders crisp white with clean edges. Verified at 1024px and at
+  390px mobile, where the copy spans the full width and the scrim's right end
+  matters most.
+
+
+--------------------------------------------------------------------------------
+ [v2.4.0] — SITE-WIDE: DEAD OPACITY CLASSES. WHY ALOHA: RANKED FIGURES.
+--------------------------------------------------------------------------------
+
+## ROOT CAUSE FOUND — 14 OPACITY VALUES WERE EMITTING NO CSS AT ALL
+
+  Tailwind's default opacity scale is sparse: 0,5,10,20,25,30,40,50,60,70,75,
+  80,90,95,100. Any modifier off that scale silently emits NOTHING. No warning,
+  no build failure — the element just renders without the border, tint or muted
+  colour it was written to have.
+
+  This codebase used 47 distinct opacity-modifier classes across 25 values.
+  FOURTEEN of them were off-scale and therefore dead:
+
+      12  15  18  22  35  45  52  55  62  68  72  78  85  97
+
+  Consequences, sitewide and invisible-by-design:
+    - Hairline rules written as `border-white/12` fell through to the base
+      `* { border-color: azure-150/60 }` rule, so subtle dark-mode rules were
+      rendering as pale blue-grey lines instead.
+    - Muted body colours like `text-navy-700/68` produced no colour rule at
+      all, so that text inherited the body ink instead of its intended tint.
+    - Panel tints like `bg-navy-700/55` and `ring-white/12` simply did not
+      exist.
+
+  This is very likely a large part of why successive rounds of this build kept
+  reading as unrefined despite the layout work: a meaningful share of the
+  hairlines and tonal steps were never actually rendering.
+
+  FIX — tailwind.config.ts now defines every integer 0-100 as a valid opacity
+  value. JIT still only emits what is used, so it costs nothing. Verified by
+  extracting all opacity classes from source and grepping the built CSS: every
+  one now emits. (`border-azure-150/60` is the sole apparent miss and is a
+  false positive — it is applied via @apply, so the class name never appears in
+  the output.)
+
+  Also fixed: `lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]` was not being
+  generated, collapsing the heading to one column. Changed to the value pattern
+  already proven elsewhere in the codebase.
+
+  LESSON RECORDED: a Tailwind class that does not exist fails silently. When
+  something "looks off" and the markup reads correct, check that the class
+  actually emitted before redesigning the component. Several rounds of layout
+  changes here were treating a symptom of this.
+
+## WHY ALOHA — FIGURES RANKED
+
+  Finally reviewed on screen rather than by measurement. A temporary route was
+  added at /design-preview rendering the section alone, because a fresh
+  navigation captures reliably where scrolling mid-page does not. Route deleted
+  afterwards. Worth recreating for any future section-level design work.
+
+  Seeing it confirmed the remaining fault: six equally weighted figures is a
+  dashboard. Uniform cells also stranded dead space, since a short figure
+  cannot fill a column sized for the longest.
+
+  Now ranked:
+    - The three that sell the service (99.99% uptime, 5-25 ms latency,
+      unlimited data) run large and open across the full width, separated by
+      vertical rules rather than boxed.
+    - The remaining three drop to one compact line each.
+    - The heading splits across two columns, so the top of the section is no
+      longer a left-weighted block with empty space beside it.
+
+  Verified on screen: heading 576/480px two-column, vertical rules rendering at
+  rgba(255,255,255,.12), no horizontal overflow, build clean.
+
+
+--------------------------------------------------------------------------------
+ [v2.3.0] — COUNT-UP REMOVED, FIGURE SCALE DIALLED BACK
+--------------------------------------------------------------------------------
+
+## COUNT-UP REMOVED ENTIRELY
+
+  components/ui/CountUp.tsx DELETED. Both usages replaced with the plain value.
+
+  It shipped a screen full of "0.00%", "0 mi", "0 hrs" TWICE in user-facing
+  screenshots. Two separate defects were already fixed in it (negative frames
+  from unclamped rAF progress; a zero-seeded initial state) and it still failed,
+  because the remaining failure is inherent to the pattern rather than a bug:
+  a count-up necessarily renders zero for its opening frames, and six of them
+  entering the viewport together means the whole section reads as zeros at once.
+
+  On a page whose entire argument is reliability and uptime, a statistic that
+  can momentarily display "0.00% uptime" is worse than no animation. The
+  animation was decorative; the number is the product claim. Removed rather
+  than patched a third time.
+
+  Rule recorded in the component docblock: figures on this page are never
+  animated from a placeholder value.
+
+## FIGURE SCALE
+
+  v2.2.0 overcorrected. Having diagnosed "not enough scale contrast", I set the
+  figure at 46.4px, which swamped the cell — reported as "so big, not nice".
+
+  Now 34.4px (down 26%), giving a 2.26x ratio over the claim line. Hierarchy
+  comes from the GAP between levels, not from the size of the top one. Cell
+  padding, icon size and internal rhythm tightened to match.
+
+  Verified: all six figures render their real values immediately, no zero
+  state at any point; type levels 34.4 / 15.2 / 10.9px.
+
+  Still not visually confirmed — the Browser pane capture continues to fail
+  while the window is backgrounded.
+
+
+--------------------------------------------------------------------------------
+ [v2.2.0] — WHY ALOHA: HIERARCHY FIX (the actual problem)
+--------------------------------------------------------------------------------
+
+  Fourth attempt at this section, and the first one aimed at the right thing.
+
+  DIAGNOSIS. Cards -> bento -> editorial index all failed identically because
+  every one of them changed the CONTAINER and left the HIERARCHY alone. Each
+  version stacked four type levels — stat, unit label, title, body — at close
+  to the same size, so nothing dominated and the block read as a spec sheet no
+  matter how it was boxed.
+
+  Two further faults visible in the v2.1.0 screenshot:
+    - The photograph was cropped 4:5. The source is a distant tower under a
+      large sky, so a portrait crop kept mostly dead grey and read as a
+      placeholder.
+    - The feature glyphs sat in a right-hand column, creating a THIRD
+      alignment that fought the two-column rhythm and left them floating
+      unattached to any text.
+
+  FIX — scale contrast, not another container:
+    - The statistic is set at 46px against a 10.9px unit label and a 15.7px
+      claim. A ~4.3x gap between the largest and smallest levels means the
+      figure leads and the rest supports, which is what makes a stat block
+      read as designed rather than tabulated.
+    - Per-feature body copy dropped entirely (0 paragraphs per cell). That
+      detail belongs in the FAQ, not stacked under a headline number.
+    - Glyph moved inline above the figure, killing the third alignment column.
+    - Photograph recropped to a 21:9 cinematic band at full section width,
+      which uses the horizon instead of the empty sky, with the ownership
+      claim set over its dark left third.
+    - Separation is a 1px grid gap over a light parent, so the six cells read
+      as one ruled table rather than six floating cards.
+    - Figures count up on entry, reinforcing that the numbers are the subject.
+
+  Verified: 3 columns, 1px gap, 6 cells, 0 <article> containers, 0 body
+  paragraphs per cell, figure locked to 21:9, type levels 46.4 / 15.7 / 10.9px.
+
+  NOT VISUALLY CONFIRMED. The Browser pane's capture failed repeatedly while
+  the window was backgrounded, so this round was verified by measurement only.
+  Needs an eye on it.
+
+
+--------------------------------------------------------------------------------
+ [v2.1.0] — WHY ALOHA REBUILT AS AN EDITORIAL INDEX
+--------------------------------------------------------------------------------
+
+  Reported again as generic. The v1.6.0 rebuild swapped a uniform card row for
+  a bento grid, which was the wrong correction: the section shape was still
+  eyebrow -> heading -> subhead -> CARD GRID -> CTA band. That shape is the
+  generic marketing-page template regardless of how the cards are arranged. A
+  bento grid is still a grid.
+
+  Rebuilt on a different structural idea — a print-style feature index:
+
+    LEFT (sticky)   The argument. Eyebrow, headline, one-line thesis, then the
+                    tower photograph as a 4:5 portrait figure carrying the
+                    single strongest claim in its caption. Stays in place while
+                    the reasons scroll past it.
+
+    RIGHT           The six reasons as ruled editorial rows. Oversized muted
+                    index numerals (01-06), the statistic as display type with
+                    its label in accent, then title and body. Separated by
+                    hairline rules, not card borders.
+
+  What was removed, deliberately:
+    - Every card container. Zero <article> elements remain in the section.
+    - Card borders, tile backgrounds, backdrop blurs, per-card spotlights.
+      The rules and the numbering carry the structure instead.
+    - The duplicated eyebrow. It read "Why Aloha Broadband" directly above the
+      heading "Why customers choose Aloha Broadband"; the eyebrow is now
+      "The network".
+
+  Interaction is carried by the rows themselves rather than by card chrome: on
+  hover the top rule draws itself across the full width (700ms), the index
+  numeral warms from white/18 to accent, and the feature glyph lights.
+
+  Verified: two-column 363px/501px at desktop with the rail computing
+  position:sticky, 6 ruled rows, 0 card containers, indices 01-06 rendering,
+  body copy at 11.04:1, figure locked to 4:5. At 375px it collapses to a single
+  335px column with zero overflow and the glyph column drops out.
+
+
+--------------------------------------------------------------------------------
+ [v2.0.0] — PREMIUM LAYER
+--------------------------------------------------------------------------------
+
+  Three rounds of incremental polish had not delivered the requested step
+  change, so this is a deliberate build of the things that actually separate a
+  brand-grade site from a competent one, rather than another pass of tweaks.
+
+## NEW PRIMITIVES
+
+  + components/ui/Grain.tsx
+      A fixed film-grain layer over the entire page, as an inline SVG
+      feTurbulence data URI — one small base64 string, no network request, no
+      repaint on scroll. This is the cheapest single thing that stops flat
+      digital gradients reading as synthetic.
+
+  + components/ui/Aurora.tsx  (rewritten)
+      Was three blurred circles that drifted. Now a four-field mesh gradient
+      where each field drifts AND rotates hue (+/-20deg, so it never wanders
+      off-brand). The fourth field fills the centre specifically so the effect
+      does not resolve as "three blobs". 24 fields across the page.
+
+  + components/ui/Spotlight.tsx
+      A light that follows the pointer across a group of cards. ONE
+      rAF-throttled listener per group writes --mx/--my to every card; each
+      card paints its own highlight from those variables. Cost is constant
+      regardless of card count. 12 cards wired: plans, features, fine print.
+
+  + components/ui/CountUp.tsx
+      Stats count up on entry. Operates on strings rather than numbers, so one
+      component handles "99.99%", "5-25 ms", "20+ yrs" and "Unlimited" — it
+      animates the first number found and leaves every other character in
+      place. Decimal places are inferred from the source.
+
+  + globals.css: .spotlight-layer and .beam-border
+      beam-border is a conic gradient rotating behind the card, masked to a 1px
+      ring. Used on exactly two elements — the featured plan and the closing
+      CTA — because the effect stops reading as premium the moment it is
+      everywhere.
+
+## HERO
+
+  - Mesh aurora raised to 0.95 intensity, blend opacity 60% -> 75%.
+  - Added a slow-breathing coral accent orb on the horizon (9s cycle).
+  - Stat strip figures now count up.
+
+## THREE BUGS FOUND AND FIXED WHILE BUILDING THIS
+
+  1. NEGATIVE STATISTICS. requestAnimationFrame hands the callback the FRAME'S
+     start timestamp, which can predate a performance.now() captured moments
+     earlier. That produced negative progress, and easeOutExpo turns negative
+     progress into a negative number — the strip briefly painted "-7.18%" and
+     "-1+ yrs". Progress is now clamped at both ends, not just the top.
+
+  2. STATS COULD STICK AT ZERO. The first implementation seeded the display at
+     0 on mount and relied on the observer to animate it up. In a hidden tab
+     IntersectionObserver never fires at threshold 0.4, so the figure sat on
+     screen reading "0.00%". Inverted: the display now starts at the REAL value
+     and is only knocked to zero at the instant the animation begins. Every
+     failure path — hidden tab, dead observer, unmount mid-flight — now leaves
+     the correct number. A statistic must degrade to correct, never to zero.
+     Backed by a settle timeout (setTimeout still fires when rAF is frozen) and
+     a visibilitychange handler.
+
+  3. BEAM RING WAS CLIPPED. `.beam-border::before` sat on the same element as
+     `overflow-hidden` (needed to clip the card's ambient wash), so the ring
+     was clipped away entirely. Moved onto a wrapper around the article.
+
+  Also: .spotlight-layer needed z-index 0 + pointer-events none, and the
+  fine-print card's header/dl needed `relative`, or the layer painted over the
+  content instead of under it.
+
+  Verified: 4/4 wipes open, 0/40 reveals faded, 0 overflowing elements, no
+  horizontal scroll, no negative count-up frames across 30 samples, build
+  clean.
+
+
+--------------------------------------------------------------------------------
+ [v1.7.0] — FAKE PROMO FRAMING REMOVED, HERO GRADED, DUPLICATE TICKER CUT
+--------------------------------------------------------------------------------
+
+## THE CARRIER RUNS NO PROMOTIONS — CORRECTED
+
+  Challenged on whether Aloha Broadband actually has offers. Re-audited: swept
+  /, /pricing, /learn-more and /contact-us for promo / offer / special / deal /
+  discount / save / limited time / free month / sale / % off / waive / credit.
+
+  Result: ZERO real promotions. The only matches were the heading
+  "What We Offer:" (a feature list) and the phrase "special antenna's".
+
+  The hero had been showing a "NOW ON" pill over "30-day money-back guarantee /
+  Unlimited data, zero usage caps". Those are STANDING TERMS of the service,
+  not an active offer, and dressing them in urgency framing misrepresented the
+  carrier. This was my error from the initial build.
+
+  Fixes:
+    - `promos` export renamed to `assurances`, with a provenance note recording
+      the sweep and an explicit instruction never to add urgency treatment to
+      them. If Aloha ever publishes a genuine promotion it goes in a separate
+      `promos` export rather than reusing these.
+    - Hero pill replaced with a standing fact about the operator: "Locally
+      owned and operated in Kaʻū & Puna, Hawaiʻi Island for over 20 years."
+    - The three assurances now sit as plain chips inside the availability card,
+      presented as terms rather than as a deal.
+    - Verified: no urgency language ("now on", "limited time", "hurry", "ends
+      soon", "act now") anywhere in the rendered page.
+
+## HERO — GRADED OUT OF DULL
+
+  The supplied photograph is deliberately flat, low-contrast documentary
+  overcast, which is why it read as dull. Two corrections, both in CSS so the
+  source asset stays untouched and the grade is tunable in one place:
+
+    - CSS filter on the photo layer: saturate(1.35) contrast(1.14)
+      brightness(1.04).
+    - A screen-blended warm horizon wash anchored at 78%/62% of the frame,
+      running sunset orange -> coral -> azure -> clear. It adds light to the
+      sea and sky and ties the frame to the brand accent instead of leaving it
+      flat slate.
+
+  Hero badge also restyled with a coral border and glow so it carries weight.
+
+## DUPLICATE TICKER REMOVED
+
+  The same Marquee, with the same items and the same styling, was running in
+  both the hero stat strip and the Why Aloha CTA band — it read as one
+  component pasted twice. Removed from Why Aloha; the hero keeps it, which
+  still satisfies the brief's infinite-ticker requirement.
+  Verified: exactly one marquee on the page.
+
+
+--------------------------------------------------------------------------------
+ [v1.6.1] — HERO REGRESSION FIXES
+--------------------------------------------------------------------------------
+
+  Two defects introduced by v1.6.0, both reported and both reproduced.
+
+  1. ACCENT HEADLINE RENDERED AS A DARK SMUDGE.
+     v1.6.0 gave the accent words a `bg-clip-text text-transparent` gradient
+     sheen while the parent h1 still carried a `text-shadow`. Those two do not
+     compose: the shadow paints a solid dark silhouette BEHIND glyphs whose
+     fill is a clipped gradient, so "Kaʻū and Puna." came out as a muddy brown
+     blob instead of coral.
+     Fix: dropped the gradient sheen, back to solid `text-sunset-400`.
+     Verified computed colour is now rgb(255,75,51).
+
+     Rule going forward: never put text-shadow on bg-clip-text/text-transparent.
+
+  2. STAT STRIP APPEARED TO BLEED EDGE TO EDGE.
+     The strip itself was correctly inset, but the hero <section> carried
+     `bg-navy-800`. Below the photo panel, that background filled the full
+     viewport width behind the strip, reading as a full-bleed band with the
+     ticker floating in it.
+     Fix: background moved off the section and onto the photo panel, so the
+     section is transparent and the strip floats over the boundary onto the
+     white section below — which is the effect that was intended.
+     Verified: section background is rgba(0,0,0,0); at 1024px the card sits
+     32->977 with the marquee fully inside it; at 375px it sits 20->355 and
+     collapses to 2 columns. No horizontal overflow at either width.
+
+  ALSO: the three-stop text shadow from v1.6.0 read as grey blobs around the
+  glyphs. Reduced to a single clean stop, and recoloured from navy to neutral
+  black so it darkens without tinting.
+
+  LEFT VIGNETTE REINTRODUCED — with a caveat worth recording. The hero headline
+  sits over pale overcast sky and was genuinely hard to read with no treatment
+  at all. Added a NEUTRAL BLACK gradient confined to the left edge that is
+  fully clear by 62% across. This is deliberately not the thing that was
+  objected to: the previous overlay was a navy-blue wash across the whole
+  frame that tinted the photograph. This one adds no colour and leaves the
+  right two-thirds of the image untouched.
+
+
+--------------------------------------------------------------------------------
+ [v1.6.0] — HERO OVERLAY REMOVED, MOTION SYSTEM, WHY ALOHA REBUILT
+--------------------------------------------------------------------------------
+
+## HERO — OVERLAY REMOVED
+
+  Both scrim layers deleted. The photograph now renders at full strength with
+  no colour wash over it (verified: zero overlay divs remain in #top).
+
+  Legibility is held by TYPE TREATMENT rather than a veil — a three-stop text
+  shadow (tight 1-2px pair hugging the glyphs, plus a wide 38px soft pass) on
+  the headline and paragraph. This was the trade-off of removing the scrim;
+  flagged to the user.
+
+## MOTION SYSTEM
+
+  + components/ui/Aurora.tsx — three large blurred radial fields of official
+    brand colour on long, offset, transform-only loops (26s / 32s / 38s).
+    GPU-composited, never triggers layout. `tone` switches between navy and
+    light sections, `intensity` scales alpha.
+
+  New keyframes in tailwind.config.ts:
+    kenburns  34s  slow scale+drift across the hero photograph
+    auroraA   26s  drifting brand light
+    auroraB   32s  counter-drifting brand light
+    sheen      7s  gradient sweep across the accent words of a headline
+
+  Applied: hero (ken burns on the photo, screen-blended aurora so it adds
+  colour rather than veiling), plans, fine print, why-aloha, FAQ and footer.
+  18 aurora fields across the page. All suppressed by the existing
+  prefers-reduced-motion block.
+
+  The hero headline accent is now a gradient-clipped animated sheen
+  (#ff4b33 -> #ec6c27 -> #ff4b33) instead of flat coral.
+
+## HERO — LAYOUT
+
+  Added a stat strip (uptime / latency / data / years served) that OVERLAPS the
+  hero's lower edge by -6rem and carries the benefit ticker along its base.
+  The hero previously ended on a flat horizontal rule, which is the single
+  biggest tell of a stock template block; an overlapping element breaks that
+  edge and reads as a designed composition.
+
+## WHY ALOHA — REBUILT
+
+  The reported problems all traced to one decision: the tower photograph was a
+  full-bleed section backdrop, which forced a heavy blue scrim, which in turn
+  crushed the card contrast.
+
+  - Full-bleed photo backdrop REMOVED (verified: 0 remaining). The scrim went
+    with it.
+  - The photograph now occupies ONE bento tile spanning the full left column,
+    with its own local gradient confined to that tile.
+  - Layout changed from a uniform 3-col grid to a 3x3 bento: one tall
+    photographic tile plus six stat tiles. No longer a generic card row.
+  - Cards changed from bg-white/[0.045] (near-transparent over a busy photo) to
+    solid navy-700/75 with backdrop blur.
+  - Body copy recoloured slatey-400 -> azure-200. Measured contrast against the
+    card is now 11.04:1, comfortably past WCAG AAA.
+  - Every feature body trimmed to a single short sentence; the section intro cut
+    from two lines to one.
+  - Stat moved up beside the icon so each tile leads with the number.
+  - Stagger replaced with per-tile Reveal wrappers: a Stagger here would need
+    display:contents, which leaves its IntersectionObserver without a layout
+    box and stops it firing entirely.
+
+## FOOTER
+
+  Copyright year removed: now "© Aloha Fiber. All rights reserved."
+
+  Verified after all changes at 1024px, full-page scroll:
+    4/4 wipes open · 0 clipped · 0/40 reveals faded · 0 overflowing elements ·
+    no horizontal scroll · build clean.
+
+
+--------------------------------------------------------------------------------
+ [v1.5.0] — PHOTOGRAPHY LANDED AND OPTIMISED
+--------------------------------------------------------------------------------
+
+  All five assets supplied and implemented. Two problems had to be fixed before
+  they could ship.
+
+  1. GENERATOR WATERMARK. Every image carried a four-pointed sparkle in the
+     bottom-right corner. Pixel analysis on the darkest frame put its bounding
+     box at x:1264-1366, y:625-724 in the 1408x768 source. All five are now
+     cropped to 1250px wide, which removes it cleanly without touching the
+     subject in any frame.
+
+  2. WEIGHT. Delivered as PNG at 28.7 MB total (hero 6.75 MB, antenna 8.57 MB).
+     That would have destroyed the PageSpeed budget the brief calls for.
+     Converted to progressive mozjpeg, q82, 4:4:4 chroma:
+
+       hero-kau-coastline   6.75 MB ->  70 KB   1250x768
+       tower-ridge-dusk     7.68 MB ->  79 KB   1250x768
+       antenna-install      8.57 MB -> 135 KB   1250x768
+       home-connected       2.27 MB -> 178 KB   1250x768
+       og-share             2.08 MB -> 110 KB   1200x630  (exact OG ratio)
+       ------------------------------------------------
+       TOTAL               28.70 MB -> 572 KB   (98% reduction)
+
+     PNG originals moved to design/source-images/, OUTSIDE the served folder.
+     Next copies /public wholesale into the build, so leaving them there would
+     have shipped 28 MB of dead weight.
+
+  Scrim rebalancing — the original scrims were tuned against gradients and
+  buried the photographs once they were real:
+
+    Hero      95/88/72% -> 93/82/46/28% across a 100deg axis, so the copy
+              column stays dark while the coastline reads on the right. Added
+              a bottom weight so the ticker edge stays clean. Decorative dot
+              plane dropped 0.55 -> 0.22 and both glows softened, since the
+              photograph now carries the depth.
+    WhyAloha  94/90/95% -> 93/78/82/94%, letting the tower show through.
+              Grid overlay dropped 0.05 -> 0.03.
+    Coverage  Background position pinned to 72%/38% rather than centre: the
+              banner crops to a 2.66:1 letterbox from a 1.63:1 source, and
+              centring cut the technician out of frame.
+
+  + design/IMAGE-ASSETS.md rewritten with the as-shipped sizes and a
+    reproducible sharp command for regenerating any asset (sharp ships with
+    Next, so no new dependency).
+
+  Verified: all five serve HTTP 200 as image/jpeg, every layer resolves in the
+  DOM, and og:image is populated.
+
+
+--------------------------------------------------------------------------------
+ [v1.4.0] — CARD ICONOGRAPHY, PHOTOGRAPHY SLOTS, CTA LABEL
+--------------------------------------------------------------------------------
+
+## ICONS ADDED TO CARDS
+
+  + components/ui/Icons.tsx — PlanGlyph, a three-bar signal ladder. Filled bars
+    show the tier, faded bars the headroom above it, so Basic / Standard / Plus
+    read as a progression at a glance rather than three identical cards.
+    Driven by a new optional `icon` field on PlanItem ('signal-1|2|3').
+  + IncludedIcon, OneTimeIcon, OptionalIcon for the fine-print groups, each
+    with its own tint (azure / sunset / slate) matching the group's value
+    colour.
+  Plan card and fine-print card headers restructured to carry the glyph beside
+  the title.
+
+## CTA LABEL
+
+  ZipChecker submit button: "Check" -> "Check availability".
+
+## PHOTOGRAPHY — SLOTS WIRED, ASSETS PENDING
+
+  New `media` export in lib/content.ts declares all five images in one place.
+  Every slot is consumed as a CSS background layered UNDERNEATH the existing
+  gradient/scrim, so a missing file degrades to the current gradient treatment
+  instead of a broken image box. The site is safe to ship before the assets
+  arrive, and no code change is needed when they land.
+
+    hero        /images/hero-kau-coastline.jpg  2560x1440  hero, full bleed
+    whyAloha    /images/tower-ridge-dusk.jpg    2400x1600  parallax backdrop
+    coverage    /images/antenna-install.jpg     2000x1100  installation banner
+    faq         /images/home-connected.jpg      1200x900   FAQ sidebar panel
+    ogShare     /images/og-share.jpg            1200x630   Open Graph / Twitter
+
+  The Why Aloha backdrop is bound to the existing Parallax primitive, which
+  finally satisfies the brief's "parallax depth effects on background imagery"
+  with real imagery rather than gradients.
+
+  A new "Professional installation" banner was added at the head of the
+  Coverage block to host the install photograph, carrying the $200 one-time
+  setup charge in context.
+
+  Open Graph and Twitter card images were previously absent from metadata and
+  are now wired to ogShare.
+
+  + design/IMAGE-ASSETS.md — filenames, sizes, placements, and the
+    composition/weight rules (left third kept quiet for headline copy; assets
+    sit under a dark scrim so they must be generated darker than feels right).
+
+
+--------------------------------------------------------------------------------
+ [v1.3.0] — HERO: PLAN CARD REMOVED, SINGLE-COLUMN LAYOUT
+--------------------------------------------------------------------------------
+
+  Feedback: the plan snapshot card added in v1.2.0 read as a generic template
+  box. Re-examined both reference heroes side by side before rewriting:
+
+    kineticfiber.us    two columns, but the right side is a LIFESTYLE PHOTO
+                       with an angled mask, not a card. Price sits inline in
+                       the copy column. Circular promo badge overlaps the photo.
+
+    bestfiberinternet  NO right-hand element at all. A single left-aligned
+                       column over a dark field with an abstract receding
+                       dot-mesh. Price is bold inline in the paragraph. The ZIP
+                       form is the focal element, in a soft bordered container
+                       under its own heading. A check-marked benefit marquee
+                       anchors the bottom of the hero.
+
+  With no photography assets available, the bestfiberinternet model is the one
+  that can actually be executed well, so the hero now follows it:
+
+    - Plan snapshot card and the offset guarantee seal REMOVED.
+    - Single left-aligned column, max-w-3xl, headline scaled up to 4.15rem at
+      lg so it carries the full width on its own.
+    - Promo pill now leads with a pulsing accent dot.
+    - Entry price moved inline into the paragraph as bold text
+      ("Residential plans start at $55/mo"), still derived from the cheapest
+      priced plan in lib/content.ts rather than hardcoded.
+    - ZIP form promoted to the hero's single focal action: soft bordered,
+      backdrop-blurred container under the heading "See what is available at
+      your address", with the phone as microcopy beneath.
+    - Bottom marquee restyled with check markers (new `marker` prop on the
+      Marquee primitive) and lighter type, echoing the reference benefit bar.
+
+  Background is a CSS-only receding dot plane: a radial-gradient dot pattern on
+  a rotateX(71deg) surface, masked to fade toward the horizon, in the official
+  #5187c2. Static — no canvas, no rAF, nothing animated.
+
+  Verified: hero 885px tall at 1024x768 with the ZIP form at y=692 (clears the
+  fold); 375px mobile has zero horizontal overflow and no element escaping the
+  viewport; all hex values still official.
+
+
+--------------------------------------------------------------------------------
+ [v1.2.0] — PROFESSIONAL COPY PASS, ALL DECORATIVE ANIMATION REMOVED,
+            HERO RESTRUCTURED, COVERAGE SECTION REBUILT
+--------------------------------------------------------------------------------
+
+## DECORATIVE ANIMATION — REMOVED
+
+  - Hero concentric signal rings (SVG) deleted.
+  - components/ui/SignalTrace.tsx deleted outright, along with its usage in the
+    coverage block and the now-dead `.draw-path` CSS in globals.css and the
+    <noscript> block.
+
+  The page now contains ZERO canvas elements and no decorative motion graphics.
+  Remaining motion is limited to scroll reveals, the section wipe, the plan-card
+  tilt, magnetic CTAs and the trust marquee.
+
+  NOTE: this retires the original brief's "SVG path draw animation" requirement,
+  on explicit instruction ("remove that tower animation completely").
+
+
+## HERO — RESTRUCTURED
+
+  Reworked against the bestfiberinternet.us / kineticfiber.us hero pattern:
+  two columns, with a price lockup carried in the hero rather than a single
+  centred copy block (which is what made the previous version read as generic).
+
+    Left  — promo pill, headline, supporting paragraph, labelled ZIP
+            availability form, phone as microcopy, inclusion chips.
+    Right — a plan snapshot card: "Residential plans start at" + PriceLockup,
+            the most-chosen plan with four published features, and a
+            "Compare all plans" anchor to #plans.
+    Overlay — offset circular 30-day money-back seal, echoing the reference
+            sites' promo badge.
+
+  The snapshot card is driven entirely from lib/content.ts: the entry price is
+  derived from the cheapest priced plan and the featured tier from `isPopular`,
+  so neither is hardcoded.
+
+  Vertical rhythm tightened so the ZIP form clears the fold on a 1024x768
+  laptop (form top 633px, hero 856px tall). Verified no horizontal overflow.
+
+
+## COPY — PROFESSIONAL REGISTER
+
+  H1          "Genuinely unlimited internet for the Big Island, without the
+               wait." -> "Reliable high-speed internet, built for Hawaiʻi
+               Island." -> "Reliable high-speed internet for Kaʻū and Puna."
+
+  Hero body   Rewritten: "Aloha Broadband operates a locally owned tower network
+              serving communities across Kaʻū & Puna, Hawaiʻi Island.
+              Residential service includes unlimited data with no usage caps, no
+              annual contract, and support from technicians based on the island."
+
+  Plans       "Pick the tier that fits your household"
+              -> "Compare residential plans and pricing"
+              Subheading rewritten to match.
+
+  Coverage    "One tower, a clear line of sight, and you are on."
+              -> "Service areas across Hawaiʻi Island"
+
+  Fine print  "Every number, in one place" -> "Pricing, fees and inclusions"
+              Body -> "A complete breakdown of what is included with every
+              residential plan, which charges apply once, and which add-ons
+              remain optional."
+              Eyebrow "The honest fine print" -> "Fees and inclusions".
+              Group note "Only if you want them." -> "Added only on request."
+
+  Why Aloha   "Built on this island, for this island"
+              -> "Why customers choose Aloha Broadband"
+              Body -> "More than two decades of continuous investment in a
+              locally owned tower network, engineered for the terrain and
+              conditions of Hawaiʻi Island."
+
+
+## COVERAGE SECTION — REBUILT
+
+  Replaced the ZIP-pill row plus tower diagram with a two-column directory:
+
+    Left  (sticky) — eyebrow, heading, coverage summary, a light-tone ZIP
+                     checker under a "Confirm your ZIP code" label, and a short
+                     explanation that availability depends on line of sight and
+                     is confirmed at the address rather than the ZIP.
+    Right          — a staggered card grid, one card per service area, each
+                     showing district, ZIP and its communities as chips.
+
+  Driven from `coverage` in lib/content.ts, so adding an area adds a card.
+
+
+## ADDITIONAL ROBUSTNESS FIX
+
+  lib/hooks.ts — the shared reveal sweep now runs synchronously when
+  `document.visibilityState !== 'visible'`. requestAnimationFrame callbacks are
+  frozen in a hidden tab, so an rAF-only sweep left content unrevealed in
+  background tabs and in offscreen/headless rendering. Caught in testing: four
+  sections scrolled fully past while hidden and none had revealed.
+
+  Verified after the fix, scrolling the full page in a visible tab:
+    4/4 wipes open · 0 still clipped · 0/38 reveals faded · 0 canvases.
+
+
+--------------------------------------------------------------------------------
+ [v1.1.0] — HERO REBUILD, OFFICIAL-ONLY PALETTE, VISIBILITY BUG FIXES
+--------------------------------------------------------------------------------
+
+## CRITICAL BUG — "the other sections are not visible"
+
+  Reported against v1.0.0. Root cause was a hard deadlock, not a timing issue.
+
+  `.wipe` sections were hidden with `clip-path: inset(0 0 100% 0)` and revealed
+  by an IntersectionObserver attached to that same element. IntersectionObserver
+  accounts for clipping, so a fully clipped element reports ZERO intersection
+  area and the observer that was supposed to un-clip it could never fire. The
+  section stayed blank permanently, and because every `Reveal` inside inherited
+  the ancestor clip, their observers were dead too — blanking the section's
+  whole contents.
+
+  Verified directly: an element at top:224 in a 768px viewport never produced a
+  single observer callback, even at threshold 0.
+
+  Fixes, in layers, so no single failure can blank content again:
+
+  1. components/ui/primitives.tsx — Wipe now renders an UNCLIPPED `.wipe-root`
+     wrapper that carries the observer, with the clip on an inner `.wipe` child.
+     The observed node is never clipped, so it always reports correctly.
+
+  2. app/globals.css — a section's wipe opening now also releases every
+     `.reveal`, `.word-reveal` and `.draw-path` inside it
+     (`html.js .wipe-root.is-in .reveal { ... }`). This removes the nested
+     observer dependency entirely: previously, scrolling quickly past a section
+     left its contents invisible for good, because the inner observers only
+     became live after the wipe opened — by which point the content had already
+     passed the viewport. Children still honour `--reveal-delay`, so the
+     staggered choreography is unchanged.
+
+  3. lib/hooks.ts — added a shared reveal sweep. One passive, rAF-throttled
+     scroll listener for the whole page reveals anything still pending once it
+     reaches or passes the viewport. IntersectionObserver can miss an element
+     completely during a fast smooth scroll: if it moves from below the viewport
+     to above it within one frame, `isIntersecting` is false at both samples and
+     no callback ever fires. This backstop caught exactly that case in testing.
+
+  4. lib/hooks.ts — default `threshold` changed from 0.15 to 0. A non-zero ratio
+     can never be reached by an element taller than the viewport, which would
+     have permanently hidden any tall section. `rootMargin` now does the
+     "reveal slightly late" work and is height-independent.
+
+  5. lib/hooks.ts + globals.css — elements revealed while the tab is hidden get
+     an `anim-skip` class that removes the transition. Browsers freeze CSS
+     transitions in background tabs: the transition reports as "running" but its
+     currentTime never advances, so anything revealed while hidden sat at
+     opacity 0 indefinitely. This is what made background-tab renders and
+     screenshot capture come out blank.
+
+  6. app/globals.css — all scroll-animation primitives moved OUT of
+     `@layer components` to plain top-level CSS. Tailwind sorts and may drop
+     custom rules declared in that layer. Marked do-not-move.
+
+  7. Progressive enhancement — every hidden state is scoped to `html.js`, a
+     class now rendered server-side on <html> (not toggled by a script, which
+     caused a hydration mismatch and a Next warning about scripts in React
+     components). A `<noscript>` block in app/layout.tsx cancels all hidden
+     states when scripting is unavailable, so a no-JS visitor gets a fully
+     visible page rather than an empty one.
+
+  Post-fix verification, scrolled through the full page:
+    4/4 wipes open · 0 still clipped · 0/33 reveals faded · 0 words shifted.
+
+
+## HERO — REBUILT
+
+  Per feedback, and modelled on the bestfiberinternet.us hero pattern
+  (promo pill -> two-line headline with accented second line -> short paragraph
+  -> labelled availability form -> phone as microcopy -> benefit chips).
+
+  - REMOVED the black hole / deep-space canvas entirely.
+    components/ui/BlackHoleField.tsx deleted. Replaced with static official-blue
+    radial washes, a masked engineering grid and a still concentric-ring SVG
+    that reads as tower signal. No canvas, no rAF, nothing animated behind the
+    copy.
+
+  - H1 rewritten for a professional register:
+      was:  "Genuinely unlimited internet for the Big Island, without the wait."
+      now:  "Reliable high-speed internet, built for Hawaiʻi Island."
+
+  - Sub-paragraph rewritten; the "people on-island who pick up the phone" line
+    is gone:
+      now:  "Aloha Broadband operates its own ground-based tower network across
+             Kaʻū & Puna, Hawaiʻi Island, delivering unlimited residential
+             service with no data caps and no contracts — supported by
+             technicians based on the island."
+
+  - REMOVED the hero "Call to order" button. The ZIP availability check is now
+    the single hero action, under a "Check availability at your address" label,
+    with the phone number carried as microcopy beneath it.
+
+    NOTE: this reverses the original "KEEP Hero Call Button" requirement, on
+    explicit instruction. The phone path is still covered by the sticky header
+    CTA, the hero microcopy link, every plan card and the footer.
+
+  - Same informal phrasing scrubbed sitewide: "Local support from a live person"
+    -> "Locally based technical support"; "a live local voice when you need one"
+    -> "locally based technical support"; marquee "Live local support"
+    -> "Island-based support".
+
+
+## PALETTE — OFFICIAL SHADES ONLY
+
+  All derived/interpolated shades removed from tailwind.config.ts and
+  app/globals.css. Only hex values scraped from the carrier's own stylesheet
+  remain. Removed: navy-950/900/850/600, azure-600/400/300, sunset-600/300/200,
+  slatey-300. Usages remapped to the nearest official value.
+
+  The `tide` gradient no longer interpolates through a derived #03091a; it now
+  runs #012145 -> #091c30, both official.
+
+  Where a softer tone is needed, the code uses an opacity modifier on an
+  official colour (e.g. text-navy-700/60) so the underlying hue stays exact.
+
+  Verified: a scan of every hex literal across app/, components/ and
+  tailwind.config.ts returns ZERO values outside the official set.
+
+
+--------------------------------------------------------------------------------
+ [v1.0.0] — INITIAL BUILD
+--------------------------------------------------------------------------------
+
+## 0. SOURCE AUDIT (performed before any code was written)
+
+Scraped https://alohabroadband.com/ and its subpages to establish ground truth.
+
+  Pages read:
+    /                    homepage, feature grid, uptime and repair claims
+    /pricing             plan names, prices, per-plan feature ticks, fee table
+    /learn-more          how the point-to-point link works, security
+    /fixed-wireless      latency figures, tower ownership, signal range
+    /coverage            serviceable communities
+    /support             FAQ source material, tier notes
+    /testimonials        tone and regional references
+    /contact-us          published business hours
+
+  BRAND COLOURS — extracted from the live theme stylesheet
+  (https://alohabroadband.com/wp-content/themes/Aloha/style.css).
+  These are the carrier's actual hex values, not approximations:
+
+    #012145  deep brand navy        #0066cc  action blue
+    #091c30  deepest navy/charcoal  #bfd9f0  light blue
+    #123e7a  mid blue               #dceefd  pale blue
+    #5187c2  medium blue            #f2f7fc  near-white blue tint
+    #8797a7  slate                  #c2d8eb  pale blue
+    #8fa5b7  slate light            #d9e8f7  pale blue
+    #ec6c27  brand orange           #313131  body ink
+    #ff4b33  brand coral (used 10x in theme -> adopted as primary CTA)
+
+  Derived tints/shades are labelled DERIVED in tailwind.config.ts and
+  app/globals.css. No hue was invented.
+
+  SERVICE LINE AUDIT — this is the most consequential finding.
+  Aloha Broadband sells exactly ONE service line: fixed terrestrial wireless
+  internet. Confirmed by HTTP probe (all 404) and by their own copy:
+
+    /fiber    -> 404      /tv      -> 404      /bundles  -> 404
+    /cable    -> 404      /mobile  -> 404      /business -> 404
+    /phone    -> 404      /voip    -> 404
+
+  Their /fixed-wireless page states the network uses "Fixed Terrestrial
+  Wireless radio systems", explicitly not satellite and not fiber.
+
+  Consequence under the "NO Missing Services" rule: the Fiber, Cable, Bundles,
+  TV, Mobile and Phone sections are omitted entirely. They are not stubbed,
+  not left empty, and carry no "call to ask" placeholder. The ServiceLine
+  union still contains all six names, so if the carrier adds a line later,
+  adding plans with that serviceLine makes the section appear automatically.
+
+  "Voice over IP" appears on the carrier's plan table as a capability the
+  connection supports, NOT as a phone product they sell. It is therefore
+  listed as a plan feature and did not justify a Phone section.
+
+  SPEEDS: the carrier publishes no Mbps figures for residential plans and
+  states plans are "Best Effort, shared bandwidth... not guaranteed". No speed
+  numbers were invented. PlanItem.speedDown / speedUp are left undefined and
+  the UI falls back to PlanItem.capability, which carries the carrier's own
+  stream-count tiering language. The card renders Mbps automatically the day
+  those fields are populated.
+
+
+## 1. PROJECT SCAFFOLD
+
+  + package.json           Next.js 16.3.5, React 19.3.0, TypeScript 5.6,
+                           Tailwind 3.4.19, Lenis 1.3.26.
+                           npm audit: 0 vulnerabilities.
+                           (Started on Next 14.2.15, which npm flagged for a
+                           published security advisory; moved to 14.2.35, then
+                           to 16 because 14's bundled PostCSS still carried a
+                           critical advisory. Nothing was written yet, so the
+                           major upgrade cost nothing.)
+  + tsconfig.json          strict: true, @/* path alias.
+  + next.config.mjs        reactStrictMode, poweredByHeader off, compress on.
+  + postcss.config.mjs
+  + tailwind.config.ts     Full Aloha palette, price-lockup type scale,
+                           brand gradients, keyframes, silk/swoop easings.
+  + .gitignore
+  + .claude/launch.json    Dev server config (autoPort enabled).
+
+  ! No backend, no API routes, no database. Strict frontend build.
+
+
+## 2. DATA ARCHITECTURE (core requirement)
+
+  + lib/content.ts         SINGLE SOURCE OF TRUTH.
+                           Exports: ServiceLine, PlanItem, site, promos,
+                           plans, serviceSections, finePrint,
+                           finePrintDisclaimers, features, marqueeItems,
+                           coverage, coverageBlurb, faqs, legalPages.
+                           Derived helpers: plansForLine(),
+                           activeServiceSections(), ctaLabelFor(),
+                           lookupZip(), serviceableZips.
+
+                           Every price, fee, feature, FAQ, coverage ZIP and
+                           nav label on the site reads from this file. No
+                           component hardcodes plan knowledge. Changing a
+                           price means editing one line here.
+
+                           PlanItem matches the specified interface exactly.
+                           The ServiceLine union adds 'wireless' alongside the
+                           six specified names, because that is the line the
+                           carrier actually sells. Nothing was removed.
+
+  + lib/legal.ts           Body copy for the eight legal documents.
+  + lib/hooks.ts           useInView, usePrefersReducedMotion,
+                           useActiveSection, useScrolled.
+
+
+## 3. COMPONENTS
+
+  UI primitives
+  + components/ui/PriceLockup.tsx      REQUIRED universal component. The only
+                                       place money is formatted: superscript
+                                       $, oversized integer (2.5/3/3.5rem via
+                                       the text-price-* scale), muted cents,
+                                       muted cadence, sr-only full string.
+                                       Falls back to a quote line when a plan
+                                       has no published price.
+  + components/ui/MagneticButton.tsx   Magnetic pointer-follow CTA, label
+                                       trails at 0.4x for parallax. Skipped on
+                                       touch and under reduced motion.
+  + components/ui/TiltCard.tsx         3D tilt on mouse-move, reserved for the
+                                       plan cards. Drives a --mx/--my specular
+                                       highlight.
+  + components/ui/primitives.tsx       Reveal, RevealHeading (per-word mask and
+                                       rise), Wipe (clip-path section
+                                       transition), Stagger (grid entrance),
+                                       Parallax (rAF, transform-only),
+                                       Marquee (infinite ticker).
+  + components/ui/BlackHoleField.tsx   Hero deep-space canvas.
+  + components/ui/SignalTrace.tsx      SVG path-draw schematic of the
+                                       point-to-point tower topology.
+  + components/ui/ZipChecker.tsx       Frontend-only ZIP lookup against the
+                                       static coverage table. No network call.
+  + components/ui/Icons.tsx            Inline SVG icon set.
+  + components/SmoothScroll.tsx        Lenis, plus anchor routing through Lenis
+                                       with sticky-header offset.
+
+  Sections
+  + components/sections/Header.tsx           Disclosure bar + sticky header.
+  + components/sections/Hero.tsx             Hero.
+  + components/sections/PlanCard.tsx         Plan card.
+  + components/sections/ServiceSections.tsx  Service-line renderer.
+  + components/sections/FinePrintGrid.tsx    Fine-print grid.
+  + components/sections/WhyAloha.tsx         Feature grid + CTA band.
+  + components/sections/Faq.tsx              Accordion.
+  + components/sections/Footer.tsx           Legal footer.
+
+
+## 4. PAGES
+
+  + app/layout.tsx         Sora (display) + Inter (body) via next/font,
+                           metadata, Open Graph, skip link, Lenis mount.
+  + app/globals.css        Brand tokens, reveal/wipe/draw/tilt primitives,
+                           full prefers-reduced-motion suppression.
+  + app/page.tsx           Landing page in the strict required order, plus
+                           FAQPage + Service JSON-LD.
+  + app/[slug]/page.tsx    The eight legal pages. dynamicParams = false, so
+                           only those eight slugs build and anything else
+                           404s. All eight prerender as static HTML.
+
+
+## 5. SECTION ORDER AS SHIPPED
+
+   1. Top disclosure bar    "Independent Authorized Retailer of Aloha
+                            Broadband." — persistent, above the header.
+   2. Sticky header         Aloha-styled, anchor nav with scroll-spy
+                            underline, "Call (808) 555-0142" CTA.
+   3. Hero                  Live promos, H1, ZIP checker AND "Call to order"
+                            button side by side, black-hole background,
+                            trust ticker.
+   4. Service lines         Fiber/Cable/Bundles/TV/Mobile/Phone all omitted
+                            (carrier sells none). Fixed wireless renders,
+                            closing with the coverage band (#coverage) and
+                            the SVG signal trace.
+   5. Fine-print grid       Included / one-time / optional, plus disclaimers.
+   6. Why Aloha             Staggered feature grid, CTA band, reverse ticker.
+   7. FAQ                   Ten-item accordion, sticky left rail.
+   8. Footer                Reseller disclosure + the eight legal pages.
+
+
+## 6. ANIMATION INVENTORY
+
+  Implemented, all of them:
+    Lenis smooth scrolling (mandatory)         SmoothScroll.tsx
+    Black hole / deep-space hero background    BlackHoleField.tsx
+    Scroll-triggered text reveals              RevealHeading, Reveal
+    Parallax depth on background imagery       Parallax (hero, Why Aloha)
+    SVG path draw                              SignalTrace + .draw-path
+    Magnetic button hover on all CTAs          MagneticButton
+    Clip-path wipe between major sections      Wipe + .wipe
+    3D card tilt on the plan cards             TiltCard
+    Staggered grid entrance                    Stagger (Why Aloha)
+    Infinite marquee / ticker                  Marquee (hero + Why Aloha)
+
+  Explicitly NOT used, per the bans:
+    - No generic 3D spiral hero animation. The hero particles drift on
+      straight vectors bent by a central mass; there is no vortex or helix.
+    - No scroll-scrubbed animated assembly diagram anywhere. The SVG trace
+      draws once on entry via a CSS transition; it is not tied to scroll
+      position.
+
+  Performance posture: zero animation libraries. Lenis is the only runtime
+  dependency beyond React/Next. Everything else is CSS transitions driven by
+  one shared IntersectionObserver contract. The canvas caps DPR at 2, runs
+  ~150 particles, and its rAF loop is suspended whenever the hero leaves the
+  viewport or the tab is hidden. Every effect is fully suppressed under
+  prefers-reduced-motion.
+
+
+## 7. NEGATIVE CONSTRAINTS — VERIFIED AGAINST THE RENDERED DOM
+
+   [PASS] No support routing. No instruction to contact the carrier for
+          billing, outages or support. The carrier's published numbers
+          ((808) 929-7668 / (800) 929-5583) appear nowhere in the codebase.
+   [PASS] Hero contains BOTH the ZIP checker and a prominent Call button.
+   [PASS] CTA text. Basic -> "Call to order". Standard -> "Call to order".
+          Plus (no price) -> "Call for pricing". Derived by ctaLabelFor(),
+          never hardcoded. Zero raw phone numbers as button text outside the
+          header and footer (programmatically asserted).
+   [PASS] No competitor bashing. Neither banned phrase appears. The carrier's
+          own comparison copy about DSL/LTE/satellite was deliberately NOT
+          reproduced; only neutral, factual statements about the technology
+          were kept.
+   [PASS] No missing-service placeholders. Six service lines omitted
+          entirely.
+   [PASS] No Broadband Facts label links.
+   [PASS] No "Pricing observed [date]" stamps anywhere.
+   [PASS] No fake FAQs. No "is this the official site" item and no FAQ
+          explaining authorized-retailer legal structure. All ten questions
+          are practical pre-sale questions.
+   [PASS] Footer carries the reseller disclosure and exactly eight legal
+          pages, all eight prerendered and reachable.
+
+
+## 8. BUG FIXED DURING BUILD
+
+  ! body { overflow-x: hidden } turned <body> into a scroll container, which
+    silently broke position:sticky on the header — the header detached and
+    drifted mid-page. Changed to overflow-x: clip, which suppresses horizontal
+    scroll without establishing a scroll container. Verified: the header's
+    bounding rect now resolves to top: 0 at every scroll offset.
+
+
+## 9. ACTION REQUIRED BEFORE LAUNCH
+
+  1. PHONE NUMBER. lib/content.ts -> site.phone is (808) 555-0142, a NANPA
+     reserved fictional number used as a safe placeholder. Replace it with the
+     retailer's own tracked sales line. It is referenced in exactly one place,
+     so one edit updates the header, hero, every plan CTA and the footer.
+  2. LEGAL REVIEW. lib/legal.ts contains complete, professionally drafted
+     starting documents, but they are not legal advice. Have counsel review
+     them against actual data flows, retention schedule and the retailer
+     agreement, and fill in the entity name, postal address and privacy
+     contact.
+  3. metadataBase in app/layout.tsx is https://example.com. Point it at the
+     production domain so Open Graph URLs resolve.
+  4. Re-verify carrier pricing before go-live and on a recurring schedule.
+     Everything lives in lib/content.ts.
+
+================================================================================

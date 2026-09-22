@@ -1,0 +1,70 @@
+# Deploying the static site
+
+The whole site builds to plain HTML in `out/`. No Node process is needed to
+serve it — any static host works: cPanel, S3 + CloudFront, Netlify, Vercel,
+GitHub Pages, or a plain nginx/Apache document root.
+
+## Build
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://yourdomain.com npm run build
+```
+
+Then upload the **contents of `out/`** to your web root.
+
+`NEXT_PUBLIC_SITE_URL` is baked into every exported HTML file as the Open
+Graph / canonical base. It cannot be changed after the export without
+rebuilding, so set it before you build. Omitting it leaves the
+`https://example.com` placeholder in the markup.
+
+## Preview the export locally
+
+```bash
+npm start
+```
+
+Serves `out/` on <http://localhost:3000>. (`next start` does **not** work here
+— it expects a server build, not a static export.)
+
+## What gets produced
+
+| Path | |
+|---|---|
+| `index.html` | Landing page |
+| `privacy/`, `disclaimer/`, `cookies/`, `tcpa/`, `trademarks/`, `marketing-policy/`, `service-fulfillment/`, `pci-dss/` | The eight legal pages, each as `index.html` |
+| `404.html` | Not-found page |
+| `_next/` | Hashed CSS and JS — content-hashed, safe to cache forever |
+| `images/` | Photography |
+
+About 3.1 MB total (1.0 MB scripts/styles, 588 KB images).
+
+Pages are emitted as `privacy/index.html` rather than `privacy.html`, so
+extensionless URLs work on hosts that don't rewrite them.
+
+## Host configuration
+
+- **Serve `404.html` as the not-found page.** Most hosts do this by default.
+- **Cache `_next/*` aggressively** (`Cache-Control: public, max-age=31536000,
+  immutable`) — the filenames are content-hashed. Serve `*.html` with a short
+  TTL or `no-cache` so updates appear immediately.
+- **No redirects, rewrites or server config are required** beyond that.
+
+## Before going live
+
+1. **Replace the phone number.** `lib/content.ts` → `site.phone` is
+   `(808) 555-0142`, a NANPA-reserved fictional number. It is referenced in one
+   place and drives the header, hero, every plan CTA and the footer.
+2. **Have counsel review `lib/legal.ts`.** The eight policies are complete
+   drafts, not legal advice. Fill in the entity name, postal address and
+   privacy contact.
+3. **Set `NEXT_PUBLIC_SITE_URL`** as above.
+
+## Rebuilding after a content change
+
+All pricing, plans, fees, coverage, FAQs and copy live in `lib/content.ts`.
+Edit that one file, re-run the build, re-upload `out/`.
+
+> If a server feature is ever added — an API route, a server action, ISR,
+> middleware, or `next/image` optimisation — remove `output: 'export'` from
+> `next.config.mjs`. The build will fail loudly rather than silently drop the
+> feature.
