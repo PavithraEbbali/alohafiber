@@ -8,6 +8,79 @@ component creation is logged here for version tracking.
 
 
 --------------------------------------------------------------------------------
+ [v3.1.0] — MOBILE RESPONSIVENESS, GITHUB, VERCEL
+--------------------------------------------------------------------------------
+
+## TWO REAL BUGS FOUND WHILE AUDITING
+
+  1. THE AURORA BLUR HAD NEVER RENDERED. `filter` is a single property, and the
+     mesh keyframes animate `filter: hue-rotate(...)`. An animating filter
+     replaces the element's declared filter outright, so the `blur-3xl` utility
+     on every one of the 24 mesh fields was being discarded for the entire life
+     of the animation — computed filter read `hue-rotate(7.98deg)` with no blur
+     term at all. The fields were hard-edged circles, not soft light.
+     Blur now lives inside the keyframes, with the radius in --aurora-blur so
+     the mobile query can lower it. Verified: `blur(34px) hue-rotate(0deg)`.
+
+  2. TABLET REGRESSED BEHIND ITS OWN FIX. The 12px text floor was first
+     released at `sm:` (640px), which restored 9.6-11.2px labels for the entire
+     640-1024 range — i.e. every tablet, all of them touch devices. Floor now
+     holds until `lg:`.
+
+## RESPONSIVE WORK
+
+  TEXT. Thirteen micro-labels plus the shared `.eyebrow` utility rendered
+  between 9.6px and 11.5px. All now sit at a 12px floor up to `lg:`, then drop
+  to the designed desktop size.
+
+  TAP TARGETS. Twenty interactive elements were under 44x44. Fixed: header call
+  and menu buttons 40 -> 44, desktop call button given min-h-44, ZIP input and
+  submit given min-h-44, footer links changed from 37px inline-block to
+  full-width block at 45px. Inline links inside prose are left alone — WCAG
+  2.5.8 exempts them, and padding them would break the text flow.
+
+  IMAGES. 760px variants generated for all four photographs and served below
+  640px via a `.bg-responsive` class reading --bg / --bg-sm custom properties.
+  A phone no longer downloads the desktop frame: 462KB -> 143KB.
+
+  ANIMATION COST. The decorative layer is built for a desktop GPU. Under 768px:
+  aurora blur radius 64px -> 34px (the dominant cost, and imperceptible at that
+  scale), the 34s Ken Burns pan disabled (not perceptible on a small viewport,
+  but it forces a full-bleed layer to repaint continuously), and the grain's
+  mix-blend-mode dropped to normal (blending a fixed full-screen layer forces
+  the compositor to re-blend the page every scroll frame). Nothing is removed;
+  the design reads the same.
+
+  VERIFIED at 320 / 375 / 414 / 768: zero horizontal scroll, zero overflowing
+  elements, zero tap targets under 44px, zero text under 12px. At 1280 the
+  designed desktop values return, which is intended.
+
+## REPOSITORY
+
+  Pushed to https://github.com/PavithraEbbali/alohafiber (main).
+
+  design/source-images/ — the 28MB of original generator PNGs — is gitignored.
+  They are not needed to build; only the 736KB of optimised JPEGs the site
+  serves are committed. Committing them would have written 28MB into git
+  history permanently and re-cloned it on every Vercel build. They remain on
+  the local machine.
+
+## VERCEL
+
+  Ready to import with no extra configuration — Vercel auto-detects Next.js and
+  handles `output: 'export'`.
+
+  ONE REQUIRED ENVIRONMENT VARIABLE:
+    NEXT_PUBLIC_SITE_URL = https://your-production-domain.com
+  It is read at BUILD time and baked into every exported HTML file as the
+  og:image base. Without it the https://example.com placeholder ships.
+
+  `engines: node >=20.9.0` pinned, Next 16's minimum, so a project set to an
+  older Node fails at install with a clear message rather than midway through
+  the build.
+
+
+--------------------------------------------------------------------------------
  [v3.0.0] — STATIC HTML EXPORT
 --------------------------------------------------------------------------------
 
