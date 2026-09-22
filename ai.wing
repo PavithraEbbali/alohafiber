@@ -8,6 +8,114 @@ component creation is logged here for version tracking.
 
 
 --------------------------------------------------------------------------------
+ [v3.2.0] — PORTABLE BUILD: A FOLDER THAT OPENS BY DOUBLE-CLICK
+--------------------------------------------------------------------------------
+
+Goal: a zip a non-technical recipient can unzip and open with no server, no
+install and no internet, while the same source keeps producing the hosting
+build for Vercel.
+
+## WHY THE NORMAL EXPORT CANNOT DO THIS
+
+  A Next static export references everything absolutely: /_next/..., /images/...,
+  /privacy/. Correct on a web server. Under file:// the browser resolves "/" to
+  the FILESYSTEM ROOT, so every stylesheet, script, font and image 404s and the
+  recipient gets unstyled text. Measured on the plain export: 21 absolute
+  paths, 0 relative.
+
+## THE FOUR PARTS, AND WHY EACH ONE ALONE IS NOT ENOUGH
+
+  1. assetPrefix: '.' (next.config.mjs, behind PORTABLE=1)
+     The absolute "/_next/" is not only in the HTML, it is compiled into the
+     webpack runtime's publicPath, which the runtime uses to fetch chunks.
+     Rewriting HTML cannot reach that string.
+
+  2. trailingSlash: false under PORTABLE=1
+     Flattens pages to the output root (privacy.html, not privacy/index.html).
+     assetPrefix: '.' resolves against the DOCUMENT, so a single relative prefix
+     is only correct when every page sits at the same depth.
+
+  3. lib/links.ts — plain anchors, build-aware hrefs
+     <Link> hydrates and re-navigates using the route path from its PROPS, so a
+     post-build HTML rewrite is undone the moment React takes over: clicking a
+     legal link went to /tcpa, which is not a file, and 404'd. NEXT_PUBLIC_
+     PORTABLE is inlined at build time and each build now emits its own href
+     shape directly — ./tcpa.html portable, /tcpa/ hosted.
+     The hosted form KEEPS its trailing slash on purpose. <Link> used to
+     normalise /privacy to /privacy/; a plain anchor is left as written, and
+     /privacy without the slash 404s on a host that does not redirect to the
+     directory form.
+
+  4. scripts/build-portable.mjs — rewrite, strip, prune, verify, restore.
+     Ends by rebuilding out/ in the HOSTING shape so a later deploy cannot
+     ship the flattened variant by accident.
+
+## FOUR BUGS, THREE OF WHICH FAILED SILENTLY
+
+  1. BASENAME EXTRACTION. The payload filter split the path on a hand-written
+     character class whose backslash escape was lost in editing, leaving only a
+     forward slash. join() produces BACKSLASH paths on Windows, so pop()
+     returned the WHOLE PATH — which still answers endsWith('.txt') (deleting
+     README.txt) and still fails startsWith('__next.') (keeping every payload).
+     Exactly inverted behaviour, no error. Now uses basename() from node:path.
+
+  2. EMPTY DIRECTORIES SURVIVED A PRUNE THAT RAN. The prune only looked at the
+     top level, and __next.$d$slug is a DIRECTORY inside privacy/, so privacy/
+     never read as empty. walk() collects files only, so the strip pass never
+     saw it either. Now prunes recursively, bottom-up.
+
+  3. FOUR DEAD PHOTOGRAPHS, AND A VERIFIER THAT PASSED THEM. React serialises
+     the style attribute with &#x27; for a single quote. The url() rewrite
+     spelled out &quot; and a bare ' and matched neither, so every background
+     image kept an absolute path. The verifier only counted href=/src=
+     attributes, never looked inside url(), and reported a clean build. The
+     rewrite now anchors on the OPENING url(<any-quote>/ and the verifier
+     counts url() too.
+
+  4. THE ONE THAT DOES NOT ANNOUNCE ITSELF — relative url() inside a CUSTOM
+     PROPERTY. The responsive backgrounds declare their image in --bg / --bg-sm
+     on the element's inline style; app/globals.css consumes it with
+     background-image: var(--bg). Chrome resolves a relative url() in a custom
+     property against the stylesheet that CONSUMES the var(), not the element
+     that declares it. The consumer is the emitted CSS chunk under
+     _next/static/chunks/, so ./images/hero.jpg was fetched from
+     _next/static/chunks/images/hero.jpg. A missing background paints nothing
+     and throws nothing: the page looked deliberate.
+     The hosting build is immune because absolute paths have no base to resolve
+     against — going relative is what exposed it.
+     FIX: inject the consuming rule into each page's <head> so the base is the
+     HTML file in every engine. Climbing out of the chunk directory instead
+     would depend on chunk nesting depth AND be wrong in engines that follow
+     the spec and resolve against the DECLARING stylesheet.
+     Guarded: a page using .bg-responsive without the injected rule fails the
+     build. Keep the injected rule in sync with app/globals.css.
+
+## VERIFIED ON THE EXTRACTED ZIP, NOT ON THE BUILD FOLDER
+
+  Extracted to an unrelated directory and opened via file:// in Chrome:
+    [PASS] CSS, self-hosted woff2 fonts, gradients, grain all render
+    [PASS] all four photographs render (the bug above, confirmed fixed)
+    [PASS] <html class="... js lenis"> — the lenis class is added at RUNTIME,
+           so client-side JS executes under file://: Lenis, the ZIP checker,
+           the accordion and the scroll reveals all run
+    [PASS] legal pages render fully styled and link back to ./index.html
+    [PASS] 11 pages, 43 files, 2.2MB unpacked, 1.3MB zipped
+    [PASS] 0 absolute paths in HTML, 0 constructed "/_next/static/" in JS
+  No ES modules are emitted (classic scripts only), which matters because
+  module scripts are CORS-blocked under file://.
+
+## STRIPPED FROM THE PORTABLE COPY
+
+  RSC payloads and route manifests, ~850KB. Internal links are plain anchors,
+  so nothing fetches them, and under file:// they are unfetchable anyway.
+
+## HOSTING BUILD RE-VERIFIED AFTER THE CHANGE
+
+  out/ still emits href="/privacy/" matching out/privacy/index.html on disk,
+  image paths still absolute, and the portable <head> injection is absent.
+
+
+--------------------------------------------------------------------------------
  [v3.1.0] — MOBILE RESPONSIVENESS, GITHUB, VERCEL
 --------------------------------------------------------------------------------
 

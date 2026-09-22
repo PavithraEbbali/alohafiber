@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { activeServiceSections, legalPages, site } from '@/lib/content';
+import { pageHref } from '@/lib/links';
 import { Phone } from '@/components/ui/Icons';
 import { Aurora } from '@/components/ui/Aurora';
 
@@ -88,12 +88,12 @@ export function Footer() {
               <ul className="mt-5 space-y-3">
                 {legalPages.map((p) => (
                   <li key={p.slug}>
-                    <Link
-                      href={`/${p.slug}`}
+                    <a
+                      href={pageHref(p.slug)}
                       className="-my-1.5 block py-3 text-[0.88rem] text-slatey-400 transition-colors duration-300 hover:text-sunset-400"
                     >
                       {p.title}
-                    </Link>
+                    </a>
                   </li>
                 ))}
               </ul>

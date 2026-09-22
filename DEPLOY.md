@@ -92,6 +92,40 @@ Node is pinned to `>=20.9.0` in `package.json` (Next 16's minimum). If the
 Vercel project is set to an older Node version, raise it in
 **Settings → General → Node.js Version**.
 
+
+## Sending the site to someone as a zip
+
+`npm run build` produces a folder for a **web server**: every path is absolute
+(`/_next/…`, `/images/…`, `/privacy/`). Double-clicking `out/index.html` gives
+an unstyled page, because under `file://` a leading `/` means the filesystem
+root.
+
+For a copy someone can unzip and simply open:
+
+```bash
+npm run build:portable
+```
+
+This writes `portable/` — the same site with every path relative, pages
+flattened to one level, the React Server Component payloads stripped, and a
+`README.txt` for the recipient. It fails the build rather than shipping a
+folder that half-works. Zip the `portable/` folder and send it; it needs no
+server, no install and no internet connection, and it also works unchanged if
+uploaded to a web host.
+
+`portable/` and the zip are gitignored — they are generated from committed
+source.
+
+Two notes if you change the site afterwards:
+
+- `scripts/build-portable.mjs` injects a copy of the `.bg-responsive` rule into
+  each page's `<head>`. Relative `url()` inside a custom property resolves
+  against the stylesheet that *consumes* it, so without this the background
+  photographs are fetched from `_next/static/chunks/images/…` and silently do
+  not appear. If you edit that rule in `app/globals.css`, update the copy in the
+  script too — the build fails if a page using the class is missing it.
+- The portable build also writes `out/`, so the script rebuilds `out/` in the
+  hosting shape afterwards. Deploy from `out/` only after a plain `npm run build`.
 ### What is not in the repo
 
 `design/source-images/` — the original generator PNGs, about 28 MB — is

@@ -1,3 +1,9 @@
+/**
+ * PORTABLE=1 builds a copy that runs from a plain folder (double-click
+ * index.html) as well as from a web server. See scripts/make-portable.mjs.
+ */
+const PORTABLE = process.env.PORTABLE === '1';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   /**
@@ -23,8 +29,23 @@ const nextConfig = {
   /**
    * Emit `privacy/index.html` rather than `privacy.html`, so the site works
    * from a filesystem root on hosts that do not rewrite extensionless URLs.
+   *
+   * PORTABLE=1 flips this off, which flattens every page to the output root
+   * (privacy.html, tcpa.html, ...). That matters because `assetPrefix: '.'`
+   * resolves relative to the *document*: at a uniform depth it is correct for
+   * every page, whereas with nested directories `./_next/` from /privacy/
+   * would look for /privacy/_next/. Flattening is what makes a single relative
+   * prefix safe.
    */
-  trailingSlash: true,
+  trailingSlash: !PORTABLE,
+
+  /**
+   * PORTABLE=1 also makes the webpack runtime's publicPath relative. Without
+   * it the runtime carries a hardcoded "/_next/" and any chunk it fetches at
+   * runtime resolves to the filesystem root under file://. Rewriting the HTML
+   * alone does not reach that string — it lives inside the JS bundle.
+   */
+  ...(PORTABLE ? { assetPrefix: '.' } : {}),
 };
 
 export default nextConfig;

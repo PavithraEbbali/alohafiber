@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { legalDocs, legalSlugs } from '@/lib/legal';
 import { legalPages, site } from '@/lib/content';
+import { homeHref, pageHref } from '@/lib/links';
 import { Header } from '@/components/sections/Header';
 import { Footer } from '@/components/sections/Footer';
 import { MagneticButton } from '@/components/ui/MagneticButton';
@@ -62,13 +62,13 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
 
           <div className="shell relative">
             <nav aria-label="Breadcrumb" className="mb-6">
-              <Link
-                href="/"
+              <a
+                href={homeHref()}
                 className="inline-flex items-center gap-2 text-[0.8rem] font-medium text-slatey-400 transition-colors hover:text-sunset-400"
               >
                 <ArrowRight className="h-3.5 w-3.5 rotate-180" aria-hidden="true" />
                 Back to {site.retailerName}
-              </Link>
+              </a>
             </nav>
 
             <span className="eyebrow text-sunset-400">
@@ -145,8 +145,8 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
               <ul className="mt-5 space-y-1">
                 {others.map((p) => (
                   <li key={p.slug}>
-                    <Link
-                      href={`/${p.slug}`}
+                    <a
+                      href={pageHref(p.slug)}
                       className="group block rounded-xl px-3.5 py-3 transition-colors duration-300 hover:bg-azure-50"
                     >
                       <span className="block text-[0.88rem] font-semibold text-navy-700 transition-colors group-hover:text-azure-500">
@@ -155,7 +155,7 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
                       <span className="mt-0.5 block text-[0.78rem] leading-snug text-navy-700/52">
                         {p.summary}
                       </span>
-                    </Link>
+                    </a>
                   </li>
                 ))}
               </ul>
