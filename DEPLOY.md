@@ -68,3 +68,34 @@ Edit that one file, re-run the build, re-upload `out/`.
 > middleware, or `next/image` optimisation — remove `output: 'export'` from
 > `next.config.mjs`. The build will fail loudly rather than silently drop the
 > feature.
+
+## Deploying on Vercel
+
+The repo is ready to import as-is — Vercel auto-detects Next.js and handles the
+static export without extra configuration.
+
+1. **New Project → Import** `PavithraEbbali/alohafiber`.
+2. Leave Framework Preset, Build Command and Output Directory on their detected
+   defaults. `output: 'export'` is in `next.config.mjs`; Vercel picks up the
+   `out` directory automatically.
+3. Add one **Environment Variable**, for every environment:
+
+   | Key | Value |
+   |---|---|
+   | `NEXT_PUBLIC_SITE_URL` | `https://your-production-domain.com` |
+
+   Without it the Open Graph tags keep the `https://example.com` placeholder.
+   It is read at **build time**, so changing it later requires a redeploy.
+4. Deploy. Every push to `main` redeploys automatically.
+
+Node is pinned to `>=20.9.0` in `package.json` (Next 16's minimum). If the
+Vercel project is set to an older Node version, raise it in
+**Settings → General → Node.js Version**.
+
+### What is not in the repo
+
+`design/source-images/` — the original generator PNGs, about 28 MB — is
+gitignored. Only the optimised JPEGs the site actually serves (736 KB) are
+committed. Keeping the PNGs out avoids writing 28 MB into git history
+permanently and re-cloning it on every build. They are still on the local
+machine; commit them deliberately if you want them backed up.
